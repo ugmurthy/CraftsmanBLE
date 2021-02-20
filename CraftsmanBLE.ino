@@ -53,11 +53,16 @@ bool start_read = false;
 float accX;
 float accY;
 float accZ;
-
+float gyroX;
+float gyroY;
+float gyroZ;
 // readings buffer
-// 1+3 floats x 4 bytes x 4000 = 64k
-float acc_buff[16000];
-long idx;
+// 1+3+3=7 floats x 4 bytes x 4000 = 64k
+float acc_buff[21000];
+//float acc_buff[210];
+int buf_size = sizeof(acc_buff);
+
+long idx=0;
 bool folded = false;
 long seqno = 0;
 
@@ -72,7 +77,7 @@ void acc_init(int dest) {
   // find appropriate line for initialising IMU for M5StickC
   M5.Imu.Init();
   if (dest==1) {
-    Serial.println("AccX,AccY,AccZ");
+    Serial.println("AccX,AccY,AccZ,GyroX,GyroY,GyroZ");
     }
 }
 
@@ -80,27 +85,39 @@ void acc_init(int dest) {
 void acc_read(int seq,int dest) {
 
   //find appropriate line for reading X,Y,Z values from IMU
+  static bool first = true;
   M5.Imu.getAccelData(&accX, &accY, &accZ);
+  M5.Imu.getGyroData(&gyroX,&gyroY,&gyroZ);
   
+  if (first) {
+    first = false;
+    sprintf(message,"{\"Device\":\"M5Craftsman\",\"period\":%d}\n",delta_T);
+    Serial.print(message);
+    sprintf(message,"SeqNo,AccX,AccY,AccZ,GyroX,GyroY,GyroZ\n");
+    Serial.print(message);
+  }
+
   if (dest == 1) {
-    Serial.print(seq);
-    Serial.print(" ,");
-    Serial.print(accX);
-    Serial.print(" ,");
-    Serial.print(accY);
-    Serial.print(" ,");
-    Serial.println(accZ);
+    sprintf(message,"%04d, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f\n",(int)seq,accX,accY,accZ,gyroX,gyroY,gyroZ);
+    Serial.print(message);
     }
 }
 
 /// SCreen routines
-void Display_readings(float X,float Y,float Z,float seq){
+void Display_readings(float X,float Y,float Z,float gX,float gY,float gZ,float seq){
   M5.Lcd.setCursor(40,30);
-  M5.Lcd.printf("%7.2f  ",X );
+  M5.Lcd.printf("%+6.2f  ",X );
+  M5.Lcd.setCursor(140,30);
+  M5.Lcd.printf("%+6.2f  ",gX);
+  
   M5.Lcd.setCursor(40,50);
-  M5.Lcd.printf("%7.2f  ",Y );
+  M5.Lcd.printf("%+6.2f  ",Y );
+  M5.Lcd.setCursor(140,50);
+  M5.Lcd.printf("%+6.2f  ",gY);
   M5.Lcd.setCursor(40,70);
-  M5.Lcd.printf("%7.2f  ",Z );
+  M5.Lcd.printf("%+6.2f  ",Z );
+  M5.Lcd.setCursor(140,70);
+  M5.Lcd.printf("%+6.2f  ",gZ);
   M5.Lcd.setCursor(70,90);
   M5.Lcd.printf("%04d",int(seq));
 }
@@ -116,31 +133,45 @@ void on_B_Pressed() {
   start_read = false;
   int upto=0;
 
+  Serial.print("Size of Buff ");
+  Serial.println(sizeof(acc_buff));
+  Serial.print("folded? ");
+  Serial.println(folded);
+  Serial.print("idx ");
+  Serial.println(idx);
+  
   // Assess how much of the buffer is full of readings
   // check if we have folded
   if (folded) {
-    upto = sizeof(acc_buff)/4-1;
+    upto = buf_size/4;
   } else {
     upto = idx ;
   }
+
+  
 
   // Get a header out including json header
   sprintf(message,"{\"Device\":\"M5Craftsman\",\"period\":%d}\n",delta_T);
   dumpBLE(message);
   Serial.print(message);
   
-  sprintf(message,"%s\n","SeqNo, AccX, AccY, AccZ");
+  sprintf(message,"%s\n","SeqNo,AccX,AccY,AccZ,GyroX,GyroY,GyroZ");
   dumpBLE(message);
   Serial.print(message);
-
   // DUMP the buffer
-  for (int i=0;i<upto;i=i+4) {
+  for (int i=0;i<upto;i=i+7) {
     seqno = (int) acc_buff[i];
-    sprintf(message,"%04d, %5.2f, %5.2f, %5.2f\n",(int)seqno,acc_buff[i+1]*scale,acc_buff[i+2]*scale,acc_buff[i+3]*scale);
+    sprintf(message,"%04d, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f\n",
+        (int)seqno,
+        acc_buff[i+1]*scale,acc_buff[i+2]*scale,acc_buff[i+3]*scale,
+        acc_buff[i+4],acc_buff[i+5],acc_buff[i+6]);
     dumpBLE(message);
+    
     Serial.print(message);
     // Lets not tax the BLE - give it some rest!
-    delay(10);  
+    
+  
+      delay(10);  
     }
 }
 // a9a778fe-c8d9-4f73-af1d-f4e407e9a78c
@@ -198,7 +229,7 @@ void setup() {
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextSize(2);
   M5.Lcd.setCursor(10, 5);
-  M5.Lcd.println("Acc Readings");
+  M5.Lcd.println("IMU Readings");
   M5.Lcd.setCursor(15,30);
   M5.Lcd.println("X");
   M5.Lcd.setCursor(15,50);
@@ -266,24 +297,21 @@ void dumpBLE(char* msg) {
 }
 
 void loop() {
-  
-  int buf_size = sizeof(acc_buff);
-  
   Button_A.read();
   Button_B.read();
   
   if (start_read) {
-    
     acc_read(seqno,dest);
-    
     acc_buff[idx]=float(seqno);
-    seqno++;
     acc_buff[idx+1]=accX;
     acc_buff[idx+2]=accY;
     acc_buff[idx+3]=accZ;
-    
-    Display_readings(accX,accY,accZ,float(seqno));    
-    idx += 4; 
+    acc_buff[idx+4]=gyroX;
+    acc_buff[idx+5]=gyroY;
+    acc_buff[idx+6]=gyroZ;
+    Display_readings(accX,accY,accZ,gyroX,gyroY,gyroZ,float(seqno)); 
+    seqno++;   
+    idx += 7; 
 
     if (idx >= buf_size/4) {
        // foldit 
