@@ -162,9 +162,13 @@ void on_A_Pressed() {
 
 void on_A_pressedFor(){
     Serial.println("Restarting device...");
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setCursor(40,30);
+    M5.Lcd.setTextSize(3);
+    M5.Lcd.printf("Restarting");
     // lets restart device
     // feedback to let user know to release button
-    M5.Beep.tone(3000);
+    M5.Beep.tone(4000);
     delay(100);
     M5.Beep.mute();
     // delay to ensure user has released the button
@@ -276,7 +280,8 @@ void setup() {
   M5.Lcd.fillScreen(BLACK);
   M5.Lcd.setTextSize(2);
   M5.Lcd.setCursor(10, 5);
-  M5.Lcd.println("IMU Readings");
+  //M5.Lcd.println("IMU Readings");
+  M5.Lcd.println("IMU: Accel  Gyro");
   M5.Lcd.setCursor(15,30);
   M5.Lcd.println("X");
   M5.Lcd.setCursor(15,50);
