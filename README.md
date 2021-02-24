@@ -22,13 +22,26 @@ Systems requirements:
 8. Click button B - to dump the readings in CSV format to BLE Client device
 9. Click "Settings" icon, Export, Copy as txt.
 
+10. Long Press A to restart device.
+
 ### Libraries used
 1. M5 Stick C plus
 2. ESP32 Arduino BLE
+3. Easybutton
 
 ### Other info:
 1. CraftsmanBLE is set to take readings every 100 ms. you can change that by changing delta_T
 2. The current buffer size can accomodate a max of 3000 accelerometer readings, if the number of readings exceed 3000 then the buffer pointer will fold back to 0 and start writing from top of buffer. Acts like a ring buffer.
 3. Sorting the data on seqno will provide you the right order of readings even if the buffer has folded.
 4. a 10ms delay is inserted while writing to BLE client- this is ensure BLE server is not overwhelmed.
+
+### Version History
+ 1.0 :17/Feb/21 Output consisted of 3-axis Accelerometer readings 
+ 1.1 :19/Feb/21 Output now includes 3-axis Accelerometer and Gyro readings
+ 1.5 :23/Feb/21 
+     1. SeqNo in BLE output is replaced by secs.999 (starts at 0.000) 
+     2. The interval time is very close to desired delta_T using delta_offset
+     3. Long Press A button till beep to restart device
+     4. If connected to physical serial port you can still read old seqNo along with Secs 
+     5. Device has a unique name derived for chip id and prefixed by KoshaCraftsman
 

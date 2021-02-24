@@ -4,12 +4,23 @@
 // For : Kosha Designs
 // Project : Craftsman
 ////////////////////////////////////
-/*
- Video: https://www.youtube.com/watch?v=oCMOYS71NIU
-    Based on Neil Kolban example for IDF: https://github.com/nkolban/esp32-snippets/blob/master/cpp_utils/tests/BLE%20Tests/SampleNotify.cpp
-    Ported to Arduino ESP32 by Evandro Copercini
- 
+/* Version history
+ 1.0 :17/Feb/21 Output consisted of 3-axis Accelerometer readings 
+ 1.1 :19/Feb/21 Output now includes 3-axis Accelerometer and Gyro readings
+ 1.5 :23/Feb/21 
+     1. SeqNo in BLE output is replaced by secs.999 (starts at 0.000) 
+     2. The interval time is very close to desired delta_T using delta_offset
+     3. Long Press A button till beep to restart device
+     4. If connected to physical serial port you can still read old seqNo along with Secs 
+     5. Device has a unique name derived for chip id and prefixed by KoshaCraftsman
 */
+
+/*
+ BLE code based on Neil Kolban example for IDF: https://github.com/nkolban/esp32-snippets/blob/master/cpp_utils/tests/BLE%20Tests/SampleNotify.cpp
+    Ported to Arduino ESP32 by Evandro Copercini
+    Video: https://www.youtube.com/watch?v=oCMOYS71NIU
+*/
+
 // #include <M5StickC.h>
 // uncomment ^ here for M5StickC
 // comment next line for M5SticlC
@@ -29,6 +40,7 @@ bool oldDeviceConnected = false;
 char message[100];
 
 void dumpBLE(char* msg);
+String blename;
 
 // BLE Related 
 
@@ -37,13 +49,18 @@ void dumpBLE(char* msg);
 #define BTN_A 37
 #define BTN_B 39
 
-
+int press_duration = 2000;
 EasyButton Button_A(BTN_A,40);
 EasyButton Button_B(BTN_B,40);
-
+bool in_loop=false;
 
 int dest = 1;
 int delta_T = 100;
+int delta_offset = 25;
+// delta_offset is computed manually based on delta_T = 100
+// it is the time to execute the code between reading and presenting
+// data . so setup() will adjust down delta_T by delta_offset
+// 23/Feb/2021
 
 // for future
 float threshold = 1.2;
@@ -65,7 +82,13 @@ int buf_size = sizeof(acc_buff);
 long idx=0;
 bool folded = false;
 long seqno = 0;
+//  secs since start : 
+// Beware: Folding of mils is possible no logic implemented as of now
+unsigned long mils_initial=0;
+unsigned long mils = 0;
+float secs = 0.0;
 
+//////////////////////
 // func declarations
 void acc_init(int dest);
 void acc_read(void);
@@ -76,35 +99,43 @@ void on_A_Pressed();
 void acc_init(int dest) {
   // find appropriate line for initialising IMU for M5StickC
   M5.Imu.Init();
-  if (dest==1) {
-    Serial.println("AccX,AccY,AccZ,GyroX,GyroY,GyroZ");
-    }
+  Serial.println("IMU Initialised ");
 }
 
 
 void acc_read(int seq,int dest) {
-
+  
   //find appropriate line for reading X,Y,Z values from IMU
   static bool first = true;
+  
   M5.Imu.getAccelData(&accX, &accY, &accZ);
   M5.Imu.getGyroData(&gyroX,&gyroY,&gyroZ);
   
   if (first) {
+    // corresponds to time of first ready
+    mils_initial = millis();
+    mils = mils_initial; 
     first = false;
-    sprintf(message,"{\"Device\":\"M5Craftsman\",\"period\":%d}\n",delta_T);
+    sprintf(message,"{\"Device\":\"%s\",\"period\":%d}\n",blename.c_str(),delta_T);
     Serial.print(message);
-    sprintf(message,"SeqNo,AccX,AccY,AccZ,GyroX,GyroY,GyroZ\n");
+    sprintf(message,"Secs,SeqNo,AccX,AccY,AccZ,GyroX,GyroY,GyroZ\n");
     Serial.print(message);
+  } else {
+    mils = millis();  
   }
-
+  
   if (dest == 1) {
-    sprintf(message,"%04d, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f\n",(int)seq,accX,accY,accZ,gyroX,gyroY,gyroZ);
+    
+    secs = (float)(mils-mils_initial) / 1000.;
+    sprintf(message,"%6.3f, %04d, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f\n",
+              secs,(int)seq,
+              accX,accY,accZ,gyroX,gyroY,gyroZ);
     Serial.print(message);
     }
 }
 
 /// SCreen routines
-void Display_readings(float X,float Y,float Z,float gX,float gY,float gZ,float seq){
+void Display_readings(float X,float Y,float Z,float gX,float gY,float gZ,float secs){
   M5.Lcd.setCursor(40,30);
   M5.Lcd.printf("%+6.2f  ",X );
   M5.Lcd.setCursor(140,30);
@@ -119,13 +150,27 @@ void Display_readings(float X,float Y,float Z,float gX,float gY,float gZ,float s
   M5.Lcd.setCursor(140,70);
   M5.Lcd.printf("%+6.2f  ",gZ);
   M5.Lcd.setCursor(70,90);
-  M5.Lcd.printf("%04d",int(seq));
+  M5.Lcd.printf("%6.3f",secs);
 }
 
 void on_A_Pressed() {
-  Serial.println("Button A has been pressed! Toggle read");
-  start_read = !start_read;
+  if (in_loop) {
+    Serial.println("Button A has been pressed! Toggle read");
+    start_read = !start_read;
+  }
 }
+
+void on_A_pressedFor(){
+    Serial.println("Restarting device...");
+    // lets restart device
+    // feedback to let user know to release button
+    M5.Beep.tone(3000);
+    delay(100);
+    M5.Beep.mute();
+    // delay to ensure user has released the button
+    delay(100);
+    ESP.restart();
+  }
 
 void on_B_Pressed() {
   // DUMP Data
@@ -151,18 +196,20 @@ void on_B_Pressed() {
   
 
   // Get a header out including json header
-  sprintf(message,"{\"Device\":\"M5Craftsman\",\"period\":%d}\n",delta_T);
+  //sprintf(message,"{\"Device\":\"M5Craftsman\",\"period\":%d}\n",delta_T+delta_offset);
+  sprintf(message,"{\"Device\":\"%s\",\"period\":%d}\n",blename.c_str(),delta_T+delta_offset);
+ 
   dumpBLE(message);
   Serial.print(message);
   
-  sprintf(message,"%s\n","SeqNo,AccX,AccY,AccZ,GyroX,GyroY,GyroZ");
+  sprintf(message,"%s\n","Secs,AccX,AccY,AccZ,GyroX,GyroY,GyroZ");
   dumpBLE(message);
   Serial.print(message);
   // DUMP the buffer
   for (int i=0;i<upto;i=i+7) {
     seqno = (int) acc_buff[i];
-    sprintf(message,"%04d, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f\n",
-        (int)seqno,
+    sprintf(message,"%6.3f, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f, %+6.2f\n",
+        acc_buff[i],
         acc_buff[i+1]*scale,acc_buff[i+2]*scale,acc_buff[i+3]*scale,
         acc_buff[i+4],acc_buff[i+5],acc_buff[i+6]);
     dumpBLE(message);
@@ -222,7 +269,7 @@ void setup() {
 
   Button_A.onPressed(on_A_Pressed);
   Button_B.onPressed(on_B_Pressed);
-  
+  Button_A.onPressedFor(2000,on_A_pressedFor);
 
   M5.begin();
   M5.Lcd.setRotation(3);
@@ -237,24 +284,29 @@ void setup() {
   M5.Lcd.setCursor(15,70);
   M5.Lcd.println("Z");
   M5.Lcd.setCursor(15,90);
-  M5.Lcd.println("Seq");
+  M5.Lcd.println("Secs");
   Serial.print("Delta T     = ");
-  Serial.println(delta_T);
-  Serial.print("Threshold   = ");
-  Serial.println(threshold);
-  Serial.print("Destination = ");
-  Serial.println(dest);
-  Serial.print("BufferSz/4  = ");
-  Serial.println(sizeof(acc_buff)/4);
+  Serial.print(delta_T);
+  Serial.println(" ms");
+  //Serial.println(threshold);
+  //Serial.print("Destination = ");
+  //Serial.println(dest);
+  //Serial.print("BufferSz/4  = ");
+  //Serial.println(sizeof(acc_buff)/4);
   
   // Initialise Acceleromenter 1 means serial port
   acc_init(1);
   // initialise buf_ptr
-
+  // Adjust delta_T
+  delta_T = delta_T - delta_offset;
 
   /// SETUP BLE SERVER
   // Create the BLE Device
-  BLEDevice::init("Kosha CraftsMan");
+  uint64_t chipid = ESP.getEfuseMac();
+  blename = "Kosha CraftsMan-"+String((uint32_t)(chipid>>32),HEX);
+  
+
+  BLEDevice::init(blename.c_str());
 
   // Create the BLE Server
   pServer = BLEDevice::createServer();
@@ -297,19 +349,23 @@ void dumpBLE(char* msg) {
 }
 
 void loop() {
+  in_loop=true;
   Button_A.read();
   Button_B.read();
   
   if (start_read) {
     acc_read(seqno,dest);
-    acc_buff[idx]=float(seqno);
+    //acc_buff[idx]=float(seqno);
+    // swithing to Secs.999
+    acc_buff[idx]=secs;
+    
     acc_buff[idx+1]=accX;
     acc_buff[idx+2]=accY;
     acc_buff[idx+3]=accZ;
     acc_buff[idx+4]=gyroX;
     acc_buff[idx+5]=gyroY;
     acc_buff[idx+6]=gyroZ;
-    Display_readings(accX,accY,accZ,gyroX,gyroY,gyroZ,float(seqno)); 
+    Display_readings(accX,accY,accZ,gyroX,gyroY,gyroZ,secs); 
     seqno++;   
     idx += 7; 
 
