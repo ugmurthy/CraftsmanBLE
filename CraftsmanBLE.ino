@@ -1,6 +1,7 @@
 ////////////////////////////////////
-// Author: U G Murthy
-// Date : 16-FEB-2021
+// Author: U G Murthy ugmurthy (a) gmail.com
+// Start Date : 16-FEB-2021
+// Last update : 3-MAR-2021
 // For : Kosha Designs
 // Project : Craftsman
 ////////////////////////////////////
@@ -13,6 +14,16 @@
      3. Long Press A button till beep to restart device
      4. If connected to physical serial port you can still read old seqNo along with Secs 
      5. Device has a unique name derived for chip id and prefixed by KoshaCraftsman
+ 2.0  :03/Mar/21
+     - Use Serial Input to provide commands to change Period and Offset
+     1. Single letter command followed by a max 3 digit number
+     2. example P100 or p100 will set period to 100ms
+     3. example O20 or o20 will set offset to 20ms (DONT USE THIS FOR NOW)
+     4. note: Period has to be greater than processing time ie delta_offset
+     5.       Offset cannot be very large betwee 24 and 30 ms
+     6. program will ignore values outside this range.
+     7. s or S to start/stop reading activity
+     8. r or R to restart M5
 */
 
 /*
@@ -54,9 +65,11 @@ EasyButton Button_A(BTN_A,40);
 EasyButton Button_B(BTN_B,40);
 bool in_loop=false;
 
+char* _version_ = "Version 2.0";
 int dest = 1;
 int delta_T = 100;
 int delta_offset = 25;
+int delta_adjusted;
 // delta_offset is computed manually based on delta_T = 100
 // it is the time to execute the code between reading and presenting
 // data . so setup() will adjust down delta_T by delta_offset
@@ -95,7 +108,21 @@ void acc_read(void);
 void Display_readings(float X,float Y,float Z);
 void on_B_Pressed();
 void on_A_Pressed();
+void show_deltas();
 
+void show_deltas() {
+  //char *msg;
+  //sprintf(msg,"%s \t %d\n","Delta_T(ms)",delta_T);
+  Serial.print("Delta_T(ms)\t: ");
+  Serial.println(delta_T);
+
+  //sprintf(msg,"%s \t %d\n","Delta_offset(ms)",delta_offset);
+  Serial.print("Delta_offset(ms)\t : ");
+  Serial.println(delta_offset);
+  Serial.print("Delta_adjusted(ms)\t : ");
+  Serial.println(delta_adjusted);
+  }
+  
 void acc_init(int dest) {
   // find appropriate line for initialising IMU for M5StickC
   M5.Imu.Init();
@@ -116,7 +143,9 @@ void acc_read(int seq,int dest) {
     mils_initial = millis();
     mils = mils_initial; 
     first = false;
-    sprintf(message,"{\"Device\":\"%s\",\"period\":%d}\n",blename.c_str(),delta_T);
+    //sprintf(message,"{\"Device\":\"%s\",\"period\":%d}\n",blename.c_str(),delta_T);
+    sprintf(message,"{\"Version\":\"%s\",\"Device\":\"%s\",\"period(ms)\":%d}\n",_version_,blename.c_str(),delta_T);
+
     Serial.print(message);
     sprintf(message,"Secs,SeqNo,AccX,AccY,AccZ,GyroX,GyroY,GyroZ\n");
     Serial.print(message);
@@ -153,12 +182,21 @@ void Display_readings(float X,float Y,float Z,float gX,float gY,float gZ,float s
   M5.Lcd.printf("%6.3f",secs);
 }
 
+void audio_beep() {
+    M5.Beep.tone(4000);
+    delay(100);
+    M5.Beep.mute();
+    // delay to ensure user has released the button
+    delay(100);
+}
+
 void on_A_Pressed() {
   if (in_loop) {
     Serial.println("Button A has been pressed! Toggle read");
     start_read = !start_read;
   }
 }
+
 
 void on_A_pressedFor(){
     Serial.println("Restarting device...");
@@ -168,11 +206,7 @@ void on_A_pressedFor(){
     M5.Lcd.printf("Restarting");
     // lets restart device
     // feedback to let user know to release button
-    M5.Beep.tone(4000);
-    delay(100);
-    M5.Beep.mute();
-    // delay to ensure user has released the button
-    delay(100);
+    audio_beep();
     ESP.restart();
   }
 
@@ -201,7 +235,7 @@ void on_B_Pressed() {
 
   // Get a header out including json header
   //sprintf(message,"{\"Device\":\"M5Craftsman\",\"period\":%d}\n",delta_T+delta_offset);
-  sprintf(message,"{\"Device\":\"%s\",\"period\":%d}\n",blename.c_str(),delta_T+delta_offset);
+  sprintf(message,"{\"Version\":\"%s\",\"Device\":\"%s\",\"period(ms)\":%d}\n",_version_,blename.c_str(),delta_T);
  
   dumpBLE(message);
   Serial.print(message);
@@ -225,8 +259,10 @@ void on_B_Pressed() {
       delay(10);  
     }
 }
+
 // a9a778fe-c8d9-4f73-af1d-f4e407e9a78c
 // BLE related classes and call backs
+
 #define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E" // UART service UUID
 #define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 #define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -244,21 +280,56 @@ class MyServerCallbacks: public BLEServerCallbacks {
     }
 };
 
-// for future - not used now.
+
 // for control purposes.
 class MyCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
       std::string rxValue = pCharacteristic->getValue();
-      std::string subsRx;
+      std::string cmd;
+      std::string argstr;
       
-      if (rxValue.length() > 0) {
+      cmd = rxValue.substr(0,1);
+      argstr = rxValue.substr(1,3);
+      //Serial.println(cmd.c_str());
+      //Serial.println(argstr.c_str());
+      
+     
+          // its a Button
+          if (cmd=="s" || cmd == "S"){
+              //Serial.println("1 pressed/release : Toggling action of button A on M5");
+              audio_beep();
+              start_read = !start_read;
+              
+          }
         
-        Serial.print("Received Value: ");
-        Serial.print(rxValue.c_str());
-        subsRx = rxValue.substr(0,4);
-        Serial.print(" Substring :");
-        Serial.println(subsRx.c_str());
-      }
+          if (cmd=="r" || cmd=="R"){       
+            on_A_pressedFor();
+          }
+       
+        
+       if (cmd == "p" || cmd == "P") {
+          // set period
+          int new_period = atoi(argstr.c_str());
+          if (new_period > delta_offset) {
+            audio_beep();
+            delta_T = new_period;
+            delta_adjusted = delta_T - delta_offset;
+            show_deltas(); 
+          }         
+        }
+         
+        if (cmd == "o" || cmd== "O") {
+          // set offset
+          int new_offset = atoi(argstr.c_str());
+          if (new_offset > 24 && new_offset < 30){
+            audio_beep();
+            delta_offset=new_offset;
+            delta_adjusted = delta_T - delta_offset;
+            
+            show_deltas();
+          }
+        }
+       
     }
 };
 // BLE related classes and call backs - ENDS here
@@ -290,21 +361,20 @@ void setup() {
   M5.Lcd.println("Z");
   M5.Lcd.setCursor(15,90);
   M5.Lcd.println("Secs");
-  Serial.print("Delta T     = ");
-  Serial.print(delta_T);
-  Serial.println(" ms");
-  //Serial.println(threshold);
-  //Serial.print("Destination = ");
-  //Serial.println(dest);
-  //Serial.print("BufferSz/4  = ");
-  //Serial.println(sizeof(acc_buff)/4);
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.setCursor(15,110);
+  sprintf(message,"%s %s","CraftsMan",_version_);
+  M5.Lcd.println(message);
+  M5.Lcd.setTextSize(2);
+  
   
   // Initialise Acceleromenter 1 means serial port
   acc_init(1);
   // initialise buf_ptr
   // Adjust delta_T
-  delta_T = delta_T - delta_offset;
-
+  delta_adjusted = delta_T - delta_offset;
+  show_deltas();
+  
   /// SETUP BLE SERVER
   // Create the BLE Device
   uint64_t chipid = ESP.getEfuseMac();
@@ -379,8 +449,12 @@ void loop() {
       folded = true;
       idx = 0 ;
     }  
-
-    delay(delta_T);
+    // this delay is a result of adjustments made for processing time
+    // between sub-sequent acc_read() call - the adjustment amount
+    // is delta_offset and when subtracted from required period gives
+    // us delta_adjusted. Note delta_T cannot be lower than processing time
+    // ie delta_offset
+    delay(delta_adjusted);
   }
 
   // disconnecting
