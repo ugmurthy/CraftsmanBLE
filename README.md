@@ -53,12 +53,22 @@ introduced a way to control M5 from the mobile phone
 4. a 10ms delay is inserted while writing to BLE client- this is ensure BLE server is not overwhelmed.
 
 ### Version History
- 1.0 :17/Feb/21 Output consisted of 3-axis Accelerometer readings 
- 1.1 :19/Feb/21 Output now includes 3-axis Accelerometer and Gyro readings
- 1.5 :23/Feb/21 
-     1. SeqNo in BLE output is replaced by secs.999 (starts at 0.000) 
-     2. The interval time is very close to desired delta_T using delta_offset
-     3. Long Press A button till beep to restart device
-     4. If connected to physical serial port you can still read old seqNo along with Secs 
-     5. Device has a unique name derived for chip id and prefixed by KoshaCraftsman
+* 1.0 :17/Feb/21 Output consisted of 3-axis Accelerometer readings 
+* 1.1 :19/Feb/21 Output now includes 3-axis Accelerometer and Gyro readings
+* 1.2 : 1.5 :23/Feb/21 
 
+>     1. SeqNo in BLE output is replaced by secs.999 (starts at 0.000) 
+>     2. The interval time is very close to desired delta_T using delta_offset
+>     3. Long Press A button till beep to restart device
+>     4. If connected to physical serial port you can still read old seqNo along with Secs 
+>     5. Device has a unique name derived for chip id and prefixed by KoshaCraftsman
+* 2.0  :03/Mar/21
+     - Use Serial Input to provide commands to change Period and Offset
+>     1. Single letter command followed by a max 3 digit number
+>     2. example P100 or p100 will set period to 100ms
+>     3. example O20 or o20 will set offset to 20ms (DONT USE THIS FOR NOW)
+>     4. note: Period has to be greater than processing time ie delta_offset
+>     5.       Offset cannot be very large betwee 24 and 30 ms
+>     6. program will ignore values outside this range.
+>     7. s or S to start/stop reading activity
+>     8. r or R to restart M5
