@@ -33,9 +33,10 @@ Version 2.0 allows control of M5 from the BLE Client device as follows
 |:---: | :---: | :---:|:---:|
 |1|S|None|Start reading IMU|
 |2|S|None|Stop reading IMU|
-|3|R|None|Restart M5|
-|4|P|nnn|Set period to nnn millisecs|
-|5|O|nnn|Set offset to nnn millisecs|
+|3|D|None|Dump readinds to BLE Server |
+|4|R|None|Restart M5|
+|5|P|nnn|Set period to nnn millisecs|
+|6|O|nnn|Set offset to nnn millisecs|
 
 
 introduced a way to control M5 from the mobile phone 

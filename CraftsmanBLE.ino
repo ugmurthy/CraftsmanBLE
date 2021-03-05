@@ -24,6 +24,9 @@
      6. program will ignore values outside this range.
      7. s or S to start/stop reading activity
      8. r or R to restart M5
+ 2.1  :05/Mar/21
+    - Added command 'D' for dumping data from BLE Server to BLE Client
+
 */
 
 /*
@@ -65,7 +68,7 @@ EasyButton Button_A(BTN_A,40);
 EasyButton Button_B(BTN_B,40);
 bool in_loop=false;
 
-char* _version_ = "Version 2.0";
+char* _version_ = "Version 2.1 5/Mar/21";
 int dest = 1;
 int delta_T = 100;
 int delta_offset = 25;
@@ -300,6 +303,11 @@ class MyCallbacks: public BLECharacteristicCallbacks {
               audio_beep();
               start_read = !start_read;
               
+          }
+
+          if (cmd=="d" || cmd == "D") {
+            // dump data
+            on_B_Pressed();
           }
         
           if (cmd=="r" || cmd=="R"){       
